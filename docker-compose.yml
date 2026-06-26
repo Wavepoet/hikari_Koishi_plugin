@@ -1,0 +1,41 @@
+services:
+  napcat:
+    image: mlikiowa/napcat-docker:latest
+    container_name: napcat
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - ACCOUNT=2169670576
+    volumes:
+      - ./napcat/config:/app/napcat/config
+      - ./napcat/data:/app/napcat/data
+      - ./napcat/qq:/app/.config/QQ
+      - ./koishi/data/files:/koishi/data/files
+
+    ports:
+      - "6099:6099" # Web UI 端口
+      - "3000:3000" # OneBot11 HTTP 端口 (可选)
+      - "3001:3001" # OneBot11 WebSocket 端口 (可选)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  koishi:
+    image: koishijs/koishi:latest
+    container_name: koishi
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./koishi:/koishi
+    ports:
+      - "5140:5140" # Koishi 控制台端口
+    depends_on:
+      - napcat
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
