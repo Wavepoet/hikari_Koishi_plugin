@@ -1,6 +1,21 @@
+const { Schema } = require('koishi');
+
 module.exports.name = 'custom-mute';
 
-module.exports.apply = (ctx) => {
+module.exports.Config = Schema.object({
+  rules: Schema.array(Schema.object({
+    keyword: Schema.string().required().description('触发关键词（例如：睡一课间）'),
+    duration: Schema.number().required().description('禁言时长（单位：秒）'),
+  })).role('table').default([
+    { keyword: '睡一课间', duration: 600 },
+    { keyword: '睡一节课', duration: 2400 },
+    { keyword: '小睡一会', duration: 7200 },
+    { keyword: '精致睡眠', duration: 28800 },
+    { keyword: '大睡特睡', duration: 86400 }
+  ]).description('禁言规则列表，支持自由配置关键词和对应的禁言时长。'),
+});
+
+module.exports.apply = (ctx, config) => {
   const logger = ctx.logger('custom-mute');
 
   ctx.middleware(async (session, next) => {
@@ -49,21 +64,10 @@ module.exports.apply = (ctx) => {
     let muteDuration = 0;
     let statementName = '';
 
-    if (content.includes('睡一课间')) {
-      muteDuration = 10 * 60; // 10分钟
-      statementName = '睡一课间';
-    } else if (content.includes('睡一节课')) {
-      muteDuration = 40 * 60; // 40分钟
-      statementName = '睡一节课';
-    } else if (content.includes('小睡一会')) {
-      muteDuration = 2 * 60 * 60; // 2小时
-      statementName = '小睡一会';
-    } else if (content.includes('精致睡眠')) {
-      muteDuration = 8 * 60 * 60; // 8小时
-      statementName = '精致睡眠';
-    } else if (content.includes('大睡特睡')) {
-      muteDuration = 24 * 60 * 60; // 24小时
-      statementName = '大睡特睡';
+    const rule = (config.rules || []).find(r => content.includes(r.keyword));
+    if (rule) {
+      muteDuration = rule.duration;
+      statementName = rule.keyword;
     } else {
       // 没匹配到禁言语句，交由其他插件处理
       return next();
