@@ -10,6 +10,70 @@ module.exports.Config = Schema.object({
   atResponse: Schema.boolean().default(false).description('发送图片时是否同时 @ 触发者'),
 });
 
+// Helper to download an image from URL
+async function downloadImage(ctx, url) {
+  if (typeof ctx.http?.file === 'function') {
+    try {
+      const result = await ctx.http.file(url);
+      return {
+        buffer: Buffer.from(result.data),
+        mime: result.mime,
+      };
+    } catch (e) {
+      // Fallback
+    }
+  }
+
+  if (typeof ctx.http?.get === 'function') {
+    try {
+      const data = await ctx.http.get(url, { responseType: 'arraybuffer' });
+      return {
+        buffer: Buffer.from(data),
+        mime: null,
+      };
+    } catch (e) {
+      // Fallback
+    }
+  }
+
+  const res = await fetch(url);
+  const ab = await res.arrayBuffer();
+  return {
+    buffer: Buffer.from(ab),
+    mime: res.headers.get('content-type'),
+  };
+}
+
+// Helper to guess file extension
+function getExtension(buffer, mime, url) {
+  if (mime) {
+    if (mime.includes('png')) return '.png';
+    if (mime.includes('jpeg') || mime.includes('jpg')) return '.jpg';
+    if (mime.includes('gif')) return '.gif';
+    if (mime.includes('webp')) return '.webp';
+    if (mime.includes('bmp')) return '.bmp';
+  }
+
+  if (url) {
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const ext = path.extname(cleanUrl).toLowerCase();
+    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].includes(ext)) {
+      return ext === '.jpeg' ? '.jpg' : ext;
+    }
+  }
+
+  if (buffer && buffer.length > 4) {
+    const hex = buffer.toString('hex', 0, 4).toUpperCase();
+    if (hex.startsWith('89504E47')) return '.png';
+    if (hex.startsWith('FFD8FF')) return '.jpg';
+    if (hex.startsWith('47494638')) return '.gif';
+    if (hex.startsWith('52494646')) return '.webp';
+    if (hex.startsWith('424D')) return '.bmp';
+  }
+
+  return '.jpg';
+}
+
 module.exports.apply = (ctx, config) => {
   const logger = ctx.logger('local-pic-sender');
 
@@ -69,6 +133,60 @@ module.exports.apply = (ctx, config) => {
     }
     contentText = contentText.replace(new RegExp(`@\\s*${botId}`, 'g'), '').trim();
 
+    // 1. 判断是否是上传指令
+    const isUpload = /^\/上传(\s|$)/.test(contentText);
+    if (isUpload) {
+      const imgElements = session.elements?.filter(el => el.type === 'image' || el.type === 'img') || [];
+      if (imgElements.length === 0) {
+        return '错误：未检测到图片，请在消息中包含图片一并发送。';
+      }
+
+      const targetDir = resolvePath(config.path);
+      if (!fs.existsSync(targetDir)) {
+        try {
+          fs.mkdirSync(targetDir, { recursive: true });
+        } catch (e) {
+          logger.error(`无法创建本地图片目录: ${targetDir}, 错误: ${e.message}`);
+          return '上传失败：无法创建本地图片存储目录。';
+        }
+      }
+
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const imgEl of imgElements) {
+        const url = imgEl.attrs?.url || imgEl.attrs?.src;
+        if (!url) {
+          failCount++;
+          continue;
+        }
+
+        try {
+          const { buffer, mime } = await downloadImage(ctx, url);
+          const ext = getExtension(buffer, mime, url);
+          const fileName = `upload_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`;
+          const savePath = path.join(targetDir, fileName);
+          
+          fs.writeFileSync(savePath, buffer);
+          successCount++;
+          logger.info(`成功保存上传的图片到: ${savePath}`);
+        } catch (err) {
+          logger.error(`下载或保存图片失败: ${err.message}`);
+          failCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        if (failCount > 0) {
+          return `已成功上传 ${successCount} 张图片，但有 ${failCount} 张图片上传失败。`;
+        }
+        return `成功上传 ${successCount} 张图片到图库！`;
+      } else {
+        return `上传失败，下载图片出错或链接无效。`;
+      }
+    }
+
+    // 2. 原本的随机图片发送功能
     // 如果配置为 onlyEmpty 且除了 @ 以外还有其他文本内容，则不触发
     if (config.onlyEmpty && contentText.length > 0) {
       return next();

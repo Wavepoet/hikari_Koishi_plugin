@@ -1,0 +1,11 @@
+{
+  "name": "koishi-plugin-custom-mute",
+  "version": "1.0.0",
+  "main": "index.js",
+  "files": [
+    "index.js"
+  ],
+  "peerDependencies": {
+    "koishi": "^4.0.0"
+  }
+}
