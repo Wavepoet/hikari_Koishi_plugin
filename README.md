@@ -10,7 +10,7 @@
 
 ## 部署与运行
 
-Docker Compose 配置，集成 NapCat 和 Koishi但插件写入：
+Docker Compose 配置，集成 NapCat 和 Koishi但插件未写入：
 
 - **NapCat WebUI**: `http://localhost:6099`
 - **Koishi 控制台**: `http://localhost:5140`
