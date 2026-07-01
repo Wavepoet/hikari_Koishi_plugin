@@ -33,7 +33,9 @@ module.exports.apply = (ctx, config) => {
     }
   }
 
-  const cmd = ctx.command('发送文件 <filename:string>', '发送指定的本地文件，例如 PDF 等');
+  const cmd = ctx.command('发送文件 <filename:string>', '发送指定的本地文件，例如 PDF 等')
+    .alias('file')
+    .shortcut('file help', { args: ['help'] });
 
   // 动态注册快捷方式
   if (config.shortcuts && Array.isArray(config.shortcuts)) {
@@ -45,8 +47,27 @@ module.exports.apply = (ctx, config) => {
   }
 
   cmd.action(async ({ session }, filename) => {
-    if (!filename) {
-      return '请输入文件名。例如：发送文件 manual.pdf';
+    // 如果没有输入文件名，或者输入了 help，自动展示当前可用文件列表
+    if (!filename || filename === 'help') {
+      try {
+        if (!fs.existsSync(targetDir)) {
+          return '当前文件目录中没有任何文件。';
+        }
+        const files = fs.readdirSync(targetDir).filter(file => {
+          const stat = fs.statSync(path.join(targetDir, file));
+          return stat.isFile() && !file.startsWith('.'); // 过滤隐藏文件和子目录
+        });
+
+        if (files.length === 0) {
+          return '当前文件目录中没有任何文件。';
+        }
+
+        const fileList = files.map(f => `- ${f}`).join('\n');
+        return `当前可用文件列表：\n${fileList}\n使用方法：\n1. 发送 “file <文件名>” 或 “发送文件 <文件名>”\n2. 直接发送快捷词`;
+      } catch (e) {
+        logger.error(`读取文件列表失败: ${e.message}`);
+        return `读取文件列表失败: ${e.message}`;
+      }
     }
 
     const filePath = path.resolve(targetDir, filename);
